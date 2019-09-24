@@ -13,14 +13,21 @@ We show that the skip-gram embedding of any word can be decomposed into two subv
 
 **Keywords**: natural language processing, words embeddings
 
-1. We trained SGNS with tied weights (Assylbekov and Takhanov 2019) on two widely-used datasets,text8 and enwik9 which gives us word embeddings as well as their partitions. We used the reference word2vec implementation from the TensorFlow codebase with all hyperparameters set to their default values except that we choose the learning rate to decay 20% faster in the weight-tied model. (https://github.com/tensorflow/models/blob/master/tutorials/embedding/word2vec.py). 
+1. We trained SGNS with tied weights (Assylbekov and Takhanov 2019) on two widely-used datasets,text8 and enwik9 (preprocessed with wikifil.pb) which gives us word embeddings as well as their partitions. We used the reference word2vec implementation from the TensorFlow codebase with all hyperparameters set to their default values except that we choose the learning rate to decay 20% faster in the weight-tied model. (https://github.com/tensorflow/models/blob/master/tutorials/embedding/word2vec.py). 
 
 The train can be done via:
 ```
 python3 word2vec_tied.py -train_data text8 -train True -gen_embs False  -postag	False
 ```
 
-2. 
+2. We extracted the whole vectors **w**’s, as well as the subvectors **x**’s and **y**’s to txt files. 
+```
+python3 word2vec_tied.py -train_data text8 -gen_embs True  -postag False
+```
+
+3.  We used the HYPERWORDS tool of Levy, Goldberg, and Dagan (https://bitbucket.org/omerlevy/hyperwords/src/default/) in order to evaluate embeddings on standard semantic tasks — word similarity and word analogy.
+
+Commands used for HYPERWORDS
 
 
 
