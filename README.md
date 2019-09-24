@@ -15,16 +15,15 @@ We show that the skip-gram embedding of any word can be decomposed into two subv
 
 1. We trained SGNS with tied weights (Assylbekov and Takhanov 2019) on two widely-used datasets,text8 and enwik9 which gives us word embeddings as well as their partitions. We used the reference word2vec implementation from the TensorFlow codebase with all hyperparameters set to their default values except that we choose the learning rate to decay 20% faster in the weight-tied model. (https://github.com/tensorflow/models/blob/master/tutorials/embedding/word2vec.py). 
 
-The train can be 
+The train can be done via:
+```
+python3 word2vec_tied.py -train_data text8 -train True -gen_embs False  -postag	False
+```
+
 2. 
 
 
 
-
-standard nowadays the trained embeddings
-are evaluated on several word similarity and word analogy tasks. We used the hyperwords
-tool of Goldberg and Levy (2014) and we refer the reader to their paper for the methodology
-of evaluation.
 
 
 
