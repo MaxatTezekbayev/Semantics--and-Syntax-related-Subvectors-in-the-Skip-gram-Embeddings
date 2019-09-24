@@ -29,7 +29,7 @@ python3 word2vec_tied.py -train_data text8 -gen_embs True  -postag False
 
 Commands used for HYPERWORDS can be found in "hyperwords commands.txt"
 
-4. We trained a softmax regression by feeding in the embeddingof a current word to predict the part-of-speech (POS) tag of the next word. We evaluated the whole vectors and the subvectors on tagging  the  Brown  corpus  with  the  Universal  POS  tags. Words which were not in our Word2vec model were excluded from dataset and last 20% of the words were used as test dataset.
+4. We trained a softmax regression by feeding in the embedding of a current word to predict the part-of-speech (POS) tag of the next word. We evaluated the whole vectors and the subvectors on tagging  the  Brown  corpus  with  the  Universal  POS  tags. Words which were not in our Word2vec model were excluded from dataset and last 20% of the words were used as test dataset.
 ```
 python3 word2vec_tied.py -train_data text8 -gen_embs False -postag True
 ```
