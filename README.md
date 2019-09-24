@@ -14,7 +14,7 @@ We show that the skip-gram embedding of any word can be decomposed into two subv
 **Keywords**: natural language processing, words embeddings
 
 We trained SGNS with tied weights (Assylbekov and Takhanov 2019) on two widely-used datasets,text8 and enwik9 which gives us word embeddings as well as their partitions
-<img src="https://latex.codecogs.com/gif.latex?R^{$$\mathbf{w}_i^\top:=[\mathbf{x}_i^\top;\mathbf{y}_i^\top].$$}" 
+<img src="https://latex.codecogs.com/gif.latex?R^{\mathbf{w}_i^\top:=[\mathbf{x}_i^\top;\mathbf{y}_i^\top]}" 
 We used the reference word2vec implementation from the TensorFlow codebase with all hyperparameters set to their default values except that we choose the learning rate to decay 20% faster in the weight-tied model. (https://github.com/tensorflow/models/blob/master/tutorials/embedding/word2vec.py). 
 
 
