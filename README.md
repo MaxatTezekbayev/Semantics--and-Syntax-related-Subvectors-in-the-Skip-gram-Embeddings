@@ -20,7 +20,15 @@ The train can be done via:
 python3 word2vec_tied.py -train_data text8 -train True -gen_embs False  -postag	False
 ```
 
-2. We extracted the whole vectors **w**’s, as well as the subvectors **x**’s and **y**’s to txt files. 
+However, before train, you will need to compile the ops as follows:
+```
+TF_INC=$(python3 -c 'import tensorflow as tf; print(tf.sysconfig.get_include())')
+TF_LIB=$(python3 -c 'import tensorflow as tf; print(tf.sysconfig.get_lib())')
+g++ -std=c++11 -shared word2vec_ops.cc word2vec_kernels.cc -o word2vec_ops.so -fPIC -I $TF_INC -O2 -D_GLIBCXX_USE_CXX11_ABI=0 -L$TF_LIB -ltensorflow_framework
+```
+
+
+2. We extracted the whole vectors **w**’s, as well as the subvectors **x**’s and **y**’s to txt files. In order to extract embeddings from the trained model you will need to change model.ckpt number in **savedmodel_paths** variable in ***word2vec_tied.py**
 ```
 python3 word2vec_tied.py -train_data text8 -gen_embs True  -postag False
 ```
