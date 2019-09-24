@@ -27,18 +27,9 @@ python3 word2vec_tied.py -train_data text8 -gen_embs True  -postag False
 
 3.  We used the HYPERWORDS tool of Levy, Goldberg, and Dagan (https://bitbucket.org/omerlevy/hyperwords/src/default/) in order to evaluate embeddings on standard semantic tasks — word similarity and word analogy.
 
-Commands used for HYPERWORDS
+Commands used for HYPERWORDS can be found in "hyperwords commands.txt"
 
-
-
-
-
-
-We performed such comparison on datasets from the SemEval Semantic Textual Similarity (STS) tasks (http://ixa2.si.ehu.es/stswiki/index.php/Main_Page, test datasets) with GLOVE and Word2Vec word embeddings:
-
-a.	Glove and Word2Vec word vectors were trained on the same dataset (Enwik 9), with the same set up (min count = 50, dimension of the word vector = 200). (Code for the customized training of the word models: /data/Training Word2Vec model with custom set up.ipynb). 
-
-b.	Pre-trained GLOVE word vectors (Common Crawl, 840B tokens, 2.2M vocab, cased, 300d vectors) (can be downloaded from https://nlp.stanford.edu/projects/glove/). \
-	Word2Vec vectors trained on Enwik 9, with min_count = 50, window size =2, vector dimension = 300. (Code for the customized training of the word models: /data/Training Word2Vec model with custom set up.ipynb)
-
-Data also contains txt file with words and its frequencies (enwiki_vocab_min200.txt), which is used in SIF model implementation. 
+4. We trained a softmax regression by feeding in the embeddingof a current word to predict the part-of-speech (POS) tag of the next word. We evaluated the whole vectors and the subvectors on tagging  the  Brown  corpus  with  the  Universal  POS  tags. Words which were not in our Word2vec model were excluded from dataset and last 20% of the words were used as test dataset.
+```
+python3 word2vec_tied.py -train_data text8 -gen_embs False -postag True
+```
