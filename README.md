@@ -42,7 +42,7 @@ Commands used for HYPERWORDS can be found in "hyperwords commands.txt"
 python3 word2vec_tied.py -train_data text8 -gen_embs False -postag True
 ```
 
-5. For calculating dot products between whole vectors **w** and **x**,**y**; and cosine similarities of given word with other words:
+5. For calculating dot products between whole vectors **w** and **x**,**y**; and cosine similarities of given word (for example **dog**) with other words:
 ```
 python3 word2vec_tied.py -train_data text8 -near_words_to dog
 ```
