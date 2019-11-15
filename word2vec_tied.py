@@ -2,12 +2,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
+#fil9 is preprocessed enwik9
 save_paths={'text8':'tmp',
            'fil9':'tmp_fil9'}
 
 embedding_folders={'text8':'embeddings',
                    'fil9':'embeddings_fil9'}
+
+
 
 savedmodel_paths={'text8':"tmp/model.ckpt-70508708",
                    'fil9':"tmp_fil9/model.ckpt-463085955"}
@@ -43,8 +45,8 @@ flags = tf.app.flags
 flags.DEFINE_string("train", "False",'Flag for train')
 flags.DEFINE_string("gen_embs", "True",'Flag for generating txt files with embeddings')
 flags.DEFINE_string("postag", "True",'Flag for training pos tagger')
-
-
+flags.DEFINE_string("near_words_to",None,'Flag for word to see nearest words around')
+flags.DEFINE_string("continue_train","False",'Flag continue train of given saved model')
 
 #standard flags
 flags.DEFINE_string("train_data", 'text8', "Training text file. "
@@ -88,10 +90,10 @@ flags.DEFINE_boolean(
     "model.nearby([b'proton', b'elephant', b'maxwell'])")
 flags.DEFINE_integer("statistics_interval", 100,
                      "Print statistics every n seconds.")
-flags.DEFINE_integer("summary_interval", 3600,
+flags.DEFINE_integer("summary_interval", 1800,
                      "Save training summary to file every n seconds (rounded "
                      "up to statistics interval).")
-flags.DEFINE_integer("checkpoint_interval", 3600,
+flags.DEFINE_integer("checkpoint_interval", 1800,
                      "Checkpoint the model (i.e. save the parameters) every n "
                      "seconds (rounded up to statistics interval).")
 
@@ -212,9 +214,6 @@ class Word2Vec(object):
             Q_np[i,i]=-1.0
         Q=tf.constant(Q_np)
 
-        # Softmax bias: [vocab_size].
-    #     sm_b = tf.Variable(tf.zeros([opts.vocab_size]), name="sm_b")
-
         # Global step: scalar, i.e., shape [].
         self.global_step = tf.Variable(0, name="global_step")
 
@@ -239,38 +238,56 @@ class Word2Vec(object):
         labels_emb=tf.nn.embedding_lookup(emb,labels)
         sampled_ids_emb=tf.nn.embedding_lookup(emb,sampled_ids)
         # Weights for labels: [batch_size, emb_dim]
-    #     true_w = tf.nn.embedding_lookup(sm_w_t, labels)
         true_w=tf.matmul(labels_emb,Q)
-        # Biases for labels: [batch_size, 1]
-    #     true_b = tf.nn.embedding_lookup(sm_b, labels)
 
         # Weights for sampled ids: [num_sampled, emb_dim]
-    #     sampled_w = tf.nn.embedding_lookup(sm_w_t, sampled_ids)
         sampled_w=tf.matmul(sampled_ids_emb,Q)
-        # Biases for sampled ids: [num_sampled, 1]
-    #     sampled_b = tf.nn.embedding_lookup(sm_b, sampled_ids)
 
-        # True logits: [batch_size, 1]
         true_logits = tf.reduce_sum(tf.multiply(example_emb, true_w), 1)
 
         norm_emb=tf.nn.l2_normalize(emb, 1)
         inp=tf.placeholder(dtype=tf.int32)
-        output=tf.matmul(tf.nn.embedding_lookup(norm_emb,inp),tf.matmul(norm_emb,Q),transpose_b=True)
-        output_score, output_idx = tf.nn.top_k(output, min(100, self._options.vocab_size))
 
+        #dot product between word vector and context vector w_i*c_j=w_i*Q*w_j
+        output=tf.matmul(tf.nn.embedding_lookup(emb,inp),tf.matmul(emb,Q),transpose_b=True)
+        output_score, output_idx = tf.nn.top_k(output, min(100000, self._options.vocab_size))
+
+        
+
+        emb_x=emb[:,1::2]
+        emb_y=emb[:,::2]
+
+        #dot product between w_i * w_j
+        dot_product=tf.matmul(tf.nn.embedding_lookup(emb,inp),emb,transpose_b=True)
+        dot_product_score, dot_product_idx = tf.nn.top_k(dot_product, min(100000, self._options.vocab_size))
+
+
+        #dot product between x_i * x_j
+        dot_product_x=tf.matmul(tf.nn.embedding_lookup(emb_x,inp),emb_x,transpose_b=True)
+        dot_product_score_x, dot_product_idx_x= tf.nn.top_k(dot_product_x, min(100000, self._options.vocab_size))
+
+        #dot product between x_i * x_j
+        dot_product_y=tf.matmul(tf.nn.embedding_lookup(emb_y,inp),-emb_y,transpose_b=True)
+        dot_product_score_y, dot_product_idx_y= tf.nn.top_k(dot_product_y, min(100000, self._options.vocab_size))
+        
 
         self._inp=inp
         self._output=output
         self._output_score=output_score
         self._output_idx=output_idx
 
-    #     far_val, far_idx = tf.nn.top_k(-nearby_dist, min(1000, self._options.vocab_size))
+        self._dot_product=dot_product
+        self._dot_product_score=dot_product_score
+        self._dot_product_idx=dot_product_idx
 
+        self._dot_product_x=dot_product_x
+        self._dot_product_score_x=dot_product_score_x
+        self._dot_product_idx_x=dot_product_idx_x
 
-        # Sampled logits: [batch_size, num_sampled]
-        # We replicate sampled noise labels for all examples in the batch
-        # using the matmul.
-    #     sampled_b_vec = tf.reshape(sampled_b, [opts.num_samples])
+        self._dot_product_y=dot_product_y
+        self._dot_product_score_y=dot_product_score_y
+        self._dot_product_idx_y=dot_product_idx_y
+
         sampled_logits = tf.matmul(example_emb,
                                    sampled_w,
                                    transpose_b=True)
@@ -359,15 +376,16 @@ class Word2Vec(object):
 
         #near words by entire
         nearby_dist = tf.matmul(nearby_emb, nemb, transpose_b=True)
-        nearby_val, nearby_idx = tf.nn.top_k(nearby_dist, min(100, self._options.vocab_size))
+        nearby_val, nearby_idx = tf.nn.top_k(nearby_dist, min(10000, self._options.vocab_size))
         #near words by +1-s
         dist_1 = tf.matmul(nearby_emb_1, nemb_1, transpose_b=True)
-        nearby_val_1, nearby_idx_1 = tf.nn.top_k(dist_1,min(100, self._options.vocab_size))
-        #near words by -1-s
+        nearby_val_1, nearby_idx_1 = tf.nn.top_k(dist_1,min(10000, self._options.vocab_size))
+        #near words by -1-s (y)
         dist_neg1= tf.matmul(nearby_emb_neg1, nemb_neg1, transpose_b=True)
-        nearby_val_neg1, nearby_idx_neg1 = tf.nn.top_k(dist_neg1,min(100, self._options.vocab_size))
+        nearby_val_neg1, nearby_idx_neg1 = tf.nn.top_k(dist_neg1,min(10000, self._options.vocab_size))
+        
         #far words by -1-s
-        far_val_neg1, far_idx_neg1=tf.nn.top_k(-dist_neg1,min(100, self._options.vocab_size))
+        far_val_neg1, far_idx_neg1=tf.nn.top_k(-dist_neg1,min(10000, self._options.vocab_size))
 
 
 
@@ -425,9 +443,6 @@ class Word2Vec(object):
         self._neighbors_sim=neighbors_sim
         self._neighbors_sim_1=neighbors_sim_1
         self._neighbors_sim_neg1=neighbors_sim_neg1
-
-
-
 
         self._nearby_analogy_val = nearby_analogy_val
         self._nearby_analogy_idx = nearby_analogy_idx
@@ -603,39 +618,7 @@ class Word2Vec(object):
         print("Eval %4d/%d accuracy = %4.3f%%" % (correct, total,
                                                   correct * 100.0 / total))
     
-    def eval_cosmul(self):
-        """Evaluate analogy questions and reports accuracy."""
-
-        # How many questions we get right at precision@1.
-        correct = 0
-
-        try:
-            total = self._analogy_questions.shape[0]
-        except AttributeError as e:
-            raise AttributeError("Need to read analogy questions.")
-
-        start = 0
-        while start < total:
-            limit = start + 2500
-            sub = self._analogy_questions[start:limit, :]
-            idx = self._predict_cosmul(sub)
-            start = limit
-            for question in xrange(sub.shape[0]):
-                for j in xrange(4):
-                    if idx[question, j] == sub[question, 3]:
-                # Bingo! We predicted correctly. E.g., [italy, rome, france, paris].
-                        correct += 1
-                        break
-                    elif idx[question, j] in sub[question, :3]:
-                # We need to skip words already in the question.
-                        continue
-                    else:
-                # The correct label is not the precision@1
-                        break
-        print()
-        print("Eval %4d/%d accuracy = %4.3f%%" % (correct, total,
-                                                  correct * 100.0 / total))
-
+ 
     def analogy(self, w0, w1, w2):
         """Predict word w3 as in w0:w1 vs w2:w3."""
         wid = np.array([[self._word2id.get(w, 0) for w in [w0, w1, w2]]])
@@ -666,6 +649,7 @@ class Word2Vec(object):
         main_id=[self._word2id.get(main_word, 0)]
         ids = np.array([self._word2id.get(x, 0) for x in words])
         sim,sim_1,sim_neg1= self._session.run([self._neighbors_sim, self._neighbors_sim_1,self._neighbors_sim_neg1], {self._nearby_word: main_id,self._neighbors: ids})
+
         return sim,sim_1,sim_neg1
     
     def nearby_custom2(self, word, num=20):
@@ -677,7 +661,7 @@ class Word2Vec(object):
         sims,sims_1,sims_neg_1=self.get_simularities(word,neighbors)
         for (neighbor, distance,sim,sim_1,sim_neg1) in zip(idx[0, :num], vals[0, :num],sims[0],sims_1[0],sims_neg_1[0]):
             near_words.append((self._id2word[neighbor].decode("utf-8") , round(sim,3),round(sim_1,3),round(sim_neg1,3)))
-        columns = pd.MultiIndex.from_product([['near Entire emb'],['word', 'sim','+1','-1']])
+        columns = pd.MultiIndex.from_product([['near by cos sim'],['word', 'cos sim','cos sim x','cos sim y']])
         near_words=pd.DataFrame(near_words,columns=columns)
 
         near_1=[]
@@ -687,7 +671,7 @@ class Word2Vec(object):
         sims,sims_1,sims_neg_1=self.get_simularities(word,neighbors)
         for (neighbor, distance,sim,sim_1,sim_neg1) in zip(idx[0, :num], vals[0, :num],sims[0],sims_1[0],sims_neg_1[0]):
             near_1.append((self._id2word[neighbor].decode("utf-8") , round(sim,3),round(sim_1,3),round(sim_neg1,3)))
-        columns = pd.MultiIndex.from_product([['near +1 emb'],['word', 'sim','+1','-1']])
+        columns = pd.MultiIndex.from_product([['near by cos sim x'],['word', 'cos sim','cos sim x','cos sim y']])
         near_1=pd.DataFrame(near_1,columns=columns)
 
         near_neg1=[]
@@ -697,7 +681,7 @@ class Word2Vec(object):
         sims,sims_1,sims_neg_1=self.get_simularities(word,neighbors)
         for (neighbor, distance,sim,sim_1,sim_neg1) in zip(idx[0, :num], vals[0, :num],sims[0],sims_1[0],sims_neg_1[0]):
             near_neg1.append((self._id2word[neighbor].decode("utf-8") , round(sim,3),round(sim_1,3),round(sim_neg1,3)))
-        columns = pd.MultiIndex.from_product([['near -1 emb'],['word', 'sim','+1','-1']])
+        columns = pd.MultiIndex.from_product([['near by cos sim y'],['word', 'cos sim','cos sim x','cos sim y']])
         near_neg1=pd.DataFrame(near_neg1,columns=columns)
 
 
@@ -708,7 +692,7 @@ class Word2Vec(object):
         sims,sims_1,sims_neg_1=self.get_simularities(word,neighbors)
         for (neighbor, distance,sim,sim_1,sim_neg1) in zip(idx[0, :num], vals[0, :num],sims[0],sims_1[0],sims_neg_1[0]):
             far_neg1.append((self._id2word[neighbor].decode("utf-8") ,round(sim,3),round(sim_1,3),round(sim_neg1,3)))
-        columns = pd.MultiIndex.from_product([['far -1 emb'],['word','sim','+1','-1']])
+        columns = pd.MultiIndex.from_product([['far by cos sim y'],['word','cos sim','cos sim x','cos sim y']])
         far_neg1=pd.DataFrame(far_neg1,columns=columns)
 
 
@@ -719,61 +703,46 @@ class Word2Vec(object):
         sims,sims_1,sims_neg_1=self.get_simularities(word,neighbors)
         for (neighbor, distance,sim,sim_1,sim_neg1) in zip(idx[0, :num], vals[0, :num],sims[0],sims_1[0],sims_neg_1[0]):
             output.append((self._id2word[neighbor].decode("utf-8") , round(distance,3),round(sim,3),round(sim_1,3),round(sim_neg1,3)))
-        columns = pd.MultiIndex.from_product([['output'],['word', 'score','sim','+1','-1']])
+        columns = pd.MultiIndex.from_product([['output (w_i*c_j'],['word', 'score','cos sim','cos sim x','cos sim y']])
         output=pd.DataFrame(output,columns=columns)
 
-        return pd.concat([near_words,near_1,near_neg1,far_neg1,output],axis=1)
-
-    def nearby_custom(self, words, num=20):
-        """Prints out nearby words given a list of words."""
-        near_words=[]
-        ids = np.array([self._word2id.get(x, 0) for x in words])
-        vals, idx = self._session.run(
-            [self._nearby_val, self._nearby_idx], {self._nearby_word: ids})
-        for i in xrange(len(words)):
-            for (neighbor, distance) in zip(idx[i, :num], vals[i, :num]):
-                near_words.append((self._id2word[neighbor].decode("utf-8") , round(distance,3)))
-
-        far_words=[]
-        vals, idx = self._session.run([self._far_val, self._far_idx], {self._nearby_word: ids})
-        vals*=-1
-        for i in xrange(len(words)):
-            for (neighbor, distance) in zip(idx[i, -num:], vals[i, -num:]):
-                far_words.append((self._id2word[neighbor].decode("utf-8") , round(distance,3)))
-    
-    
-
-        #split and the normalize       
-        ones=[]
-        vals, idx = self._session.run([self._nearby_val_plus1_sep, self._nearby_idx_plus1_sep], {self._nearby_word: ids})
-        for i in xrange(len(words)):
-            for (neighbor, distance) in zip(idx[i, :num], vals[i, :num]):
-                ones.append((self._id2word[neighbor].decode("utf-8") , round(distance,3)))    
-
-        far_ones=[]
-        vals, idx = self._session.run([self._far_val_plus1_sep, self._far_idx_plus1_sep], {self._nearby_word: ids})
-        vals*=-1
-        for i in xrange(len(words)):
-            for (neighbor, distance) in zip(idx[i, -num:], vals[i, -num:]):
-                far_ones.append((self._id2word[neighbor].decode("utf-8") , round(distance,3)))    
 
 
-        neg_ones=[]
-        vals, idx = self._session.run([self._nearby_val_neg1_sep, self._nearby_idx_neg1_sep], {self._nearby_word: ids})
-        for i in xrange(len(words)):
-            for (neighbor, distance) in zip(idx[i, :num], vals[i, :num]):
-                neg_ones.append((self._id2word[neighbor].decode("utf-8") , round(distance,3)))  
-
-        far_neg_ones=[]
-        vals, idx = self._session.run([self._far_val_neg1_sep, self._far_idx_neg1_sep], {self._nearby_word: ids})
-        vals*=-1
-        for i in xrange(len(words)):
-            for (neighbor, distance) in zip(idx[i, :num], vals[i, :num]):
-                far_neg_ones.append((self._id2word[neighbor].decode("utf-8") , round(distance,3)))  
+        ids = [self._word2id.get(word, 0)]
+        dot_product=[]
+        vals, idx = self._session.run([self._dot_product_score, self._dot_product_idx], {self._inp: ids})
+        neighbors=[self._id2word[x] for x in idx[0,:]]
+        sims,sims_1,sims_neg_1=self.get_simularities(word,neighbors)
+        for (neighbor, distance,sim,sim_1,sim_neg1) in zip(idx[0, :num], vals[0, :num],sims[0],sims_1[0],sims_neg_1[0]):
+            dot_product.append((self._id2word[neighbor].decode("utf-8") , round(distance,3),round(sim,3),round(sim_1,3),round(sim_neg1,3)))
+        columns = pd.MultiIndex.from_product([['w_i*w_j'],['word', 'score','cos sim','cos sim x','cos sim y']])
+        dot_product=pd.DataFrame(dot_product,columns=columns)
 
 
-        table=pd.concat([pd.DataFrame(near_words,columns=['entire emb','sim']), pd.DataFrame(ones,columns=['+1s emb','sim']),pd.DataFrame(neg_ones,columns=['-1s emb','sim']),pd.DataFrame(far_words,columns=['entire far emb','sim']),pd.DataFrame(far_ones,columns=['+1s far emb','sim']),pd.DataFrame(far_neg_ones,columns=['-1s far emb','sim'])],axis=1)
-        return table
+        ids = [self._word2id.get(word, 0)]
+        dot_product_x=[]
+        vals, idx = self._session.run([self._dot_product_score_x, self._dot_product_idx_x], {self._inp: ids})
+        neighbors=[self._id2word[x] for x in idx[0,:]]
+        sims,sims_1,sims_neg_1=self.get_simularities(word,neighbors)
+        for (neighbor, distance,sim,sim_1,sim_neg1) in zip(idx[0, :num], vals[0, :num],sims[0],sims_1[0],sims_neg_1[0]):
+            dot_product_x.append((self._id2word[neighbor].decode("utf-8") , round(distance,3),round(sim,3),round(sim_1,3),round(sim_neg1,3)))
+        columns = pd.MultiIndex.from_product([['x_i*x_j'],['word', 'score','cos sim','cos sim x','cos sim y']])
+        dot_product_x=pd.DataFrame(dot_product_x,columns=columns)
+
+
+        ids = [self._word2id.get(word, 0)]
+        dot_product_y=[]
+        vals, idx = self._session.run([self._dot_product_score_y, self._dot_product_idx_y], {self._inp: ids})
+        neighbors=[self._id2word[x] for x in idx[0,:]]
+        sims,sims_1,sims_neg_1=self.get_simularities(word,neighbors)
+        for (neighbor, distance,sim,sim_1,sim_neg1) in zip(idx[0, :num], vals[0, :num],sims[0],sims_1[0],sims_neg_1[0]):
+            dot_product_y.append((self._id2word[neighbor].decode("utf-8") , round(distance,3),round(sim,3),round(sim_1,3),round(sim_neg1,3)))
+        columns = pd.MultiIndex.from_product([['y_i*y_j'],['word', 'score','cos sim','cos sim x','cos sim y']])
+        dot_product_y=pd.DataFrame(dot_product_y,columns=columns)
+
+
+        return pd.concat([near_words,near_1,near_neg1,far_neg1,output,dot_product_x,dot_product_y],axis=1)
+
 
     def _nearby_analogy(self,w0,w1,w2, num=20):
         self.analogy(w0,w1,w2)
@@ -814,7 +783,7 @@ class Word2Vec(object):
             far_neg_ones.append((self._id2word[neighbor].decode("utf-8"), distance))
 
 
-        table=pd.concat([pd.DataFrame(near_words,columns=['entire emb','sim']), pd.DataFrame(ones,columns=['+1s emb','sim']),pd.DataFrame(neg_ones,columns=['-1s emb','sim']),pd.DataFrame(far_words,columns=['entire far emb','sim']), pd.DataFrame(far_ones,columns=['+1s far emb','sim']),pd.DataFrame(far_neg_ones,columns=['-1s far emb','sim'])],axis=1)
+        table=pd.concat([pd.DataFrame(near_words,columns=['entire emb','cos sim']), pd.DataFrame(ones,columns=['+1s emb','cos sim']),pd.DataFrame(neg_ones,columns=['-1s emb','cos sim']),pd.DataFrame(far_words,columns=['entire far emb','cos sim']), pd.DataFrame(far_ones,columns=['+1s far emb','cos sim']),pd.DataFrame(far_neg_ones,columns=['-1s far emb','cos sim'])],axis=1)
         return table
 
     def get_embeddings(self,folder,precision=10,normal=False,txt=False,to_return=False):
@@ -872,7 +841,7 @@ class Word2Vec(object):
             low_dim_embs = tsne.fit_transform(embs[:plot_num, :])
         elif mod=='+1':
             low_dim_embs = tsne.fit_transform(embs[:plot_num, 1::2])
-        elif mod=='-1':
+        elif mod=='cos sim y':
             low_dim_embs=tsne.fit_transform(embs[:plot_num, ::2])
         labels = [self._id2word[i] for i in xrange(plot_num)]
         self.plot_with_labels(low_dim_embs, labels, 'tsne.png')
@@ -892,7 +861,7 @@ class Word2Vec(object):
             idx = self._session.run(self._nearby_idx_1, {self._nearby_word: ids})
             idx=idx[0][:limit]
             low_dim_embs = tsne.fit_transform(embs[idx, 1::2])
-        elif mod=='-1':
+        elif mod=='cos sim y':
             near_neg1=[]
             ids = [self._word2id.get(word, 0)]
             vals, idx = self._session.run([self._nearby_val_neg1, self._nearby_idx_neg1], {self._nearby_word: ids})
@@ -921,6 +890,18 @@ class Tools():
             with tf.device("/cpu:0"):
                 model = Word2Vec(self.opts, session)
                 model.saver.restore(session, self.model_path)  
+
+    def near_to_word(self,words):
+        with tf.Graph().as_default(), tf.Session(config = config) as session:
+            with tf.device("/cpu:0"):
+                model = Word2Vec(self.opts, session)
+                model.read_analogies() # Read analogy questions
+                model.saver.restore(session, self.model_path) 
+                for word in words:
+                    print(word,':')
+                    table=model.nearby_custom2(word.encode(),100000)
+                    print(table)
+                    table.to_excel(word+'.xlsx')
                  
     def generate_embs(self,mod='entire',folder='embeddings',precision=10,normal=False,txt=False,to_return=True):
         with tf.Graph().as_default(), tf.Session(config = config) as session:
@@ -929,15 +910,12 @@ class Tools():
                 model.saver.restore(session, self.model_path)
                 mods={'entire':model.get_embeddings,
                      '+1':model.get_embeddings_1,
-                     '-1':model.get_embeddings_neg1} 
+                     'cos sim y':model.get_embeddings_neg1} 
                 if mod=='all':
                     for k in mods.keys():
                         mods[k](folder,precision,normal,txt,to_return)
                 else:
                     return mods[mod](folder,precision,normal,txt,to_return),model._word2id
-                
-
-
 
 
 
@@ -960,10 +938,51 @@ if FLAGS.train=='True':
                          os.path.join(opts.save_path, "model.ckpt"),
                          global_step=model.global_step)
 
+if FLAGS.continue_train=='True':
+    #continue to train
+    print('hello')
+    flags.FLAGS.__delattr__("epochs_to_train")
+    flags.FLAGS.__delattr__("learning_rate")
+
+    flags.DEFINE_integer(
+        "epochs_to_train", 10,
+        "Number of epochs to train. Each epoch processes the training data once "
+        "completely.")
+    flags.DEFINE_float("learning_rate", 0.052, "Initial learning rate.")
+    FLAGS = flags.FLAGS
+
+    opts = Options()
+    with tf.Graph().as_default(), tf.Session(config = config) as session:
+        with tf.device("/cpu:0"):
+            model = Word2Vec(opts, session)
+            model.read_analogies() # Read analogy questions
+            model.saver.restore(session, savedmodel_paths[dataset])
+            model.eval()  # Eval analogies.
+            for _ in xrange(opts.epochs_to_train):
+                model.train()  # Process one epoch
+                model.eval()  # Eval analogies.
+        # Perform a final save.
+        model.saver.save(session,
+                         os.path.join(opts.save_path, "model2.ckpt"),
+                         global_step=model.global_step)
+        if FLAGS.interactive:
+          # E.g.,
+          # [0]: model.analogy(b'france', b'paris', b'russia')
+          # [1]: model.nearby([b'proton', b'elephant', b'maxwell'])
+          _start_shell(locals())
 
 tool=Tools(savedmodel_paths[dataset])
 if FLAGS.gen_embs=='True':
     tool.generate_embs('all',embedding_folders[dataset],normal=False,txt=True,to_return=False)
+
+if FLAGS.near_words_to is not None:
+    words=FLAGS.near_words_to.lower()
+    if ',' in words:
+        words=words.replace(" ","").split(',')
+    else:
+        words=[words]
+    tool.near_to_word(words)
+
 
 
 if FLAGS.postag=='True':
@@ -997,7 +1016,7 @@ if FLAGS.postag=='True':
     X_test = X[train_cnt:]
     y_test = pos_tags[train_cnt:]
 
-    for mode in ['-1','+1','entire']:
+    for mode in ['cos sim y','+1','entire']:
         
             
         embs,word2id=tool.generate_embs(mode,embedding_folders[dataset],normal=True,txt=False,to_return=True)
